@@ -1,0 +1,202 @@
+<!doctype html>
+<!--suppress ES6ConvertVarToLetConst -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FoodShip POS Tyro Payment Gateway</title>
+<script type="text/javascript" src="https://code.jquery.com/jquery-1.9.1.js"></script>
+<script type="text/javascript" src="https://iclientsimulator.test.tyro.com/iclient-with-ui-v1.js"></script>
+<script type="text/javascript">
+    var TYROUI_SIMULATOR = TYRO;
+</script>
+<script type="text/javascript" src="https://iclientsimulator.test.tyro.com/iclient-v1.js"></script>
+<script type="text/javascript">
+    var CUSTOMUI_SIMULATOR = TYRO;
+</script>
+
+<script type="text/javascript">
+var mid=329;
+var tid=100;
+var amount = 0;
+var cashout =0;
+var apiKey= '8a28a6421856b38d22f46ad0b4721ab1';
+var posProductInfo =  {posProductVendor: "Foodship", posProductName: "Foodship", posProductVersion: "1.0.0"};
+var system = [TYROUI_SIMULATOR, CUSTOMUI_SIMULATOR];
+var simulator = true;
+var terminalStatus=0;
+function switchToSimulator() {
+    system = [TYROUI_SIMULATOR, CUSTOMUI_SIMULATOR];
+    simulator = true;
+}
+
+const sendResponse = (params)=>{
+    params = JSON.stringify(params);
+    if(window.ReactNativeWebView!==null && window.ReactNativeWebView!==undefined)
+   {
+
+        window.ReactNativeWebView.postMessage(params);
+   }
+   else
+   {
+        console.log(params);
+   }
+}
+
+
+function setConfig(_apiKey,_mid,_tid,product_info)
+{
+  apiKey = _apiKey;
+  mid = _mid;
+  tid = _tid;
+  posProductInfo=product_info;
+  terminalStatus = 1;
+}
+
+function doPurchaseWithTyroUI(_amount,_cashout,isReceipt,isSurcharge)
+{
+    try
+    {
+      if(terminalStatus===1)
+         {
+              let iClient = new system[0].IClientWithUI(apiKey, posProductInfo);
+               amount = String(_amount.toFixed(0)).toString();
+               cashout = String(_cashout.toFixed(0)).toString();
+     iClient.initiatePurchase({amount: amount, cashout:_cashout, integratedReceipt: isReceipt, enableSurcharge: isSurcharge}, {
+        receiptCallback: function (receipt) {
+            const params = {
+                action:'merchant-receipt-success',
+                data: receipt.merchantReceipt,
+            }
+            sendResponse(params);
+        },
+        transactionCompleteCallback: function (response) {
+            if (response?.customerReceipt?.length>0) {
+                const params = {
+                action:'customer-receipt-success',
+                data: response.customerReceipt,
+            }
+            sendResponse(params);
+            }
+            const params = {
+                action:'transaction-complete',
+                data: response,
+            }
+            sendResponse(params);
+        }
+    });
+         }
+         else
+         {
+            const params = {
+                action:'terminal-error',
+                data: {
+                    mid:mid,
+                    tid:tid,
+                },
+                message:'terminal not ready'
+            }
+            sendResponse(params);
+         }
+    } catch(e) {
+       const params = {
+                action:'terminal-error',
+                data: {
+                    mid:mid,
+                    tid:tid,
+                },
+                message:typeof e ==='object'? JSON.stringify(e): e?.toString(),
+            }
+            sendResponse(params);
+    }
+}
+
+function doRefundWithTyroUI(_amount) {
+  try
+  {
+      let iClient = new system[0].IClientWithUI(apiKey, posProductInfo);
+        amount = String(_amount.toFixed(0)).toString();
+    iClient.initiateRefund({amount: amount, integratedReceipt: true}, {
+        receiptCallback: function (receipt) {
+          if(receipt?.merchantReceipt?.length>0)
+          {
+             const params = {
+                action:'merchant-receipt-success',
+                data: receipt.merchantReceipt,
+            }
+            sendResponse(params);
+          }
+           if(receipt?.customerReceipt?.length>0)
+          {
+             const params = {
+                action:'customer-receipt-success',
+                data: receipt.customerReceipt,
+            }
+            sendResponse(params);
+          }
+        },
+        transactionCompleteCallback: function (response) {
+             if (response?.customerReceipt?.length>0) {
+                const params = {
+                action:'customer-receipt-success',
+                data: response.customerReceipt,
+            }
+            sendResponse(params);
+            }
+            const params = {
+                action:'refund-complete',
+                data: response,
+            }
+            sendResponse(params);
+        }
+    });
+  }
+  catch(e) {
+       const params = {
+                action:'terminal-error',
+                data: {
+                    mid:mid,
+                    tid:tid,
+                },
+                message: typeof e ==='object'? JSON.stringify(e): e?.toString(),
+            }
+            sendResponse(params);
+    }
+}
+
+document.addEventListener('message', function(message) {
+    const res = JSON.parse(message.data);
+    if(res.action==='set-config')
+    {
+        switchToSimulator();
+        const {apiKey:_apiKey,mid:_mid,tid:_tid,posProductInfo:_productInfo} = res?.data;
+          setConfig(_apiKey,_mid,_tid,_productInfo);
+        const params = {
+             action:'config-set',
+             data: {
+                apiKey: _apiKey,
+                posProductInfo:_productInfo,
+             },
+            message:'config successfully set'
+         }
+
+         sendResponse(params);
+    }
+    if(res.action==='init-purchase')
+    {
+         const {amount:t_amount, cashout:t_cashout, isReceipt,isSurcharge} =res.data;
+        doPurchaseWithTyroUI(t_amount,t_cashout,isReceipt,isSurcharge);
+    }
+
+    if(res.action==='init-refund')
+    {
+        doRefundWithTyroUI(res.data.amount);
+    }
+
+});
+</script>
+</head>
+<body>
+
+</body>
+</html>
